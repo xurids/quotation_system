@@ -16,11 +16,16 @@ class Project(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(200), nullable=False)
     code = Column(String(50), unique=True)
+    client_id = Column(Integer, ForeignKey("clients.id"), nullable=True)
+    status = Column(String(50), default="draft") # draft, auditing, approved, closed
+    tax_rate = Column(Numeric(5, 4), default=0.0600)
+    discount = Column(Numeric(5, 4), default=1.0000)
     total_budget = Column(Numeric(15, 2), default=0)
     development_total = Column(Numeric(15, 2), default=0)
     other_costs_total = Column(Numeric(15, 2), default=0)
     created_at = Column(DateTime, default=datetime.now)
     categories = relationship("ExpenseCategory", back_populates="project", cascade="all, delete-orphan")
+    client = relationship("Client")
 
 class ExpenseCategory(Base):
     __tablename__ = "expense_categories"
@@ -46,6 +51,7 @@ class FunctionModule(Base):
     work_months = Column(Numeric(10, 2))
     unit_price = Column(Numeric(15, 2))
     total_price = Column(Numeric(15, 2))
+    checked = Column(Boolean, default=False)
     category = relationship("ExpenseCategory", back_populates="modules")
 
 # 以下是 Skill 要求的关联模型
@@ -66,10 +72,15 @@ class Quotation(Base):
     client_id = Column(Integer, ForeignKey("clients.id"))
     quotation_number = Column(String(100), unique=True)
     title = Column(String(200))
+    tax_rate = Column(Numeric(5, 4), default=0.0600)
+    discount = Column(Numeric(5, 4), default=1.0000)
     total_amount = Column(Numeric(15, 2), default=0)
     status = Column(String(50), default="draft")
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+    project = relationship("Project")
+    client = relationship("Client")
 
 class QuotationVersion(Base):
     __tablename__ = "quotation_versions"

@@ -1,6 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, Body
-from sqlalchemy.orm import Session
-from sqlalchemy import func
+from fastapi import APIRouter, Depends, HTTPException, Body, Query
+from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import func, or_
 from typing import List, Optional
 from ..database import get_db
 from ..models import Project, ExpenseCategory, FunctionModule, Quotation, QuotationVersion, Client
@@ -11,12 +11,37 @@ import uuid
 
 router = APIRouter()
 
+@router.get("")
 @router.get("/")
-def list_quotations(db: Session = Depends(get_db)):
-    # Join with Project and Client to get names
-    results = db.query(Quotation).all()
-    # Pydantic models will handle the serialization if relationships are loaded
-    return {"code": 0, "data": results}
+def list_quotations(
+    q: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+    page: int = Query(1, ge=1),
+    size: int = Query(10, ge=1),
+    db: Session = Depends(get_db)
+):
+    query = db.query(Quotation).options(
+        joinedload(Quotation.project),
+        joinedload(Quotation.client)
+    )
+    if q:
+        query = query.filter(or_(Quotation.quotation_number.contains(q), Quotation.title.contains(q)))
+    if status:
+        query = query.filter(Quotation.status == status)
+    
+    total = query.count()
+    results = query.order_by(Quotation.updated_at.desc()).offset((page-1)*size).limit(size).all()
+    
+    return {
+        "code": 0,
+        "data": {
+            "list": results,
+            "length": total,
+            "pageNo": page,
+            "pageSize": size
+        }
+    }
+
 
 @router.post("/create-version/{project_id}")
 def create_quotation_version(
@@ -38,14 +63,17 @@ def create_quotation_version(
                 quotation_number=f"QT-{datetime.datetime.now().strftime('%Y%m%d%H%M')}-{uuid.uuid4().hex[:4].upper()}",
                 title=f"{project.name} - 报价单",
                 status="draft",
+                tax_rate=Decimal(str(data.get('tax_rate', 0.06))),
+                discount=Decimal(str(data.get('discount', 1.0))),
                 total_amount=Decimal(str(data.get('total_amount', 0)))
             )
             db.add(quotation)
             db.flush()
         else:
-            # Update existing quotation status and amount
-            if data.get('client_id'):
-                quotation.client_id = data.get('client_id')
+            # Update existing quotation
+            if data.get('client_id'): quotation.client_id = data.get('client_id')
+            quotation.tax_rate = Decimal(str(data.get('tax_rate', 0.06)))
+            quotation.discount = Decimal(str(data.get('discount', 1.0)))
             quotation.total_amount = Decimal(str(data.get('total_amount', 0)))
             quotation.updated_at = datetime.datetime.now()
 
